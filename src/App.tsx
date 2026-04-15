@@ -1,9 +1,4 @@
-declare const process: {
-  env: {
-    REACT_APP_API_URL?: string;
-    [key: string]: string | undefined;
-  };
-};
+
 
 import React, { useState, useRef, useCallback, useMemo } from "react";
 import {
@@ -33,7 +28,7 @@ import {
   Download,
 } from "lucide-react";
 
-const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8000";
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 // =====================================================================
 // TYPES

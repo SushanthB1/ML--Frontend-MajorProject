@@ -1,3 +1,10 @@
+declare const process: {
+  env: {
+    REACT_APP_API_URL?: string;
+    [key: string]: string | undefined;
+  };
+};
+
 import React, { useState, useRef, useCallback, useMemo } from "react";
 import {
   UploadCloud,
@@ -25,6 +32,8 @@ import {
   Info,
   Download,
 } from "lucide-react";
+
+const API_URL = process.env.REACT_APP_API_URL || "http://localhost:8000";
 
 // =====================================================================
 // TYPES
@@ -697,7 +706,7 @@ export default function App() {
     try {
       const formData = new FormData();
       formData.append("file", file);
-      const res = await fetch("http://localhost:8000/api/upload", {
+      const res = await fetch(`${API_URL}/api/upload`, {
         method: "POST",
         body: formData,
       });
@@ -759,7 +768,7 @@ export default function App() {
     }
     setIsTraining(true);
     try {
-      const res = await fetch("http://localhost:8000/api/train", {
+      const res = await fetch(`${API_URL}/api/train`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -813,7 +822,7 @@ export default function App() {
       for (const key in predictInputs)
         numInputs[key] = parseFloat(predictInputs[key]);
 
-      const res = await fetch("http://localhost:8000/api/predict", {
+      const res = await fetch(`${API_URL}/api/predict`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ inputs: numInputs, model_name: predictModel }),
@@ -834,7 +843,7 @@ export default function App() {
   const handleDownloadReport = async () => {
     setIsDownloading(true);
     try {
-      const res = await fetch("http://localhost:8000/api/report");
+      const res = await fetch(`${API_URL}/api/report`);
       if (!res.ok) {
         const err = await res.text();
         throw new Error(err);

@@ -1765,68 +1765,6 @@ export default function App() {
                       </div>
                     )}
 
-                    {/* Hyperparameters per trained model */}
-                    {results.hyperparameters &&
-                      Object.keys(results.hyperparameters).length > 0 && (
-                        <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
-                          <div className="px-6 py-4 border-b border-stone-100 flex items-center gap-2">
-                            <Sliders className="w-4 h-4 text-amber-500" />
-                            <span className="font-semibold text-stone-700">
-                              Hyperparameters Used per Model
-                            </span>
-                          </div>
-                          <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {Object.entries(results.hyperparameters).map(
-                              ([modelName, params]) => (
-                                <div
-                                  key={modelName}
-                                  className={`rounded-xl border p-4 ${modelName === results.best_model ? "border-amber-300 bg-amber-50/40" : "border-stone-200 bg-stone-50/40"}`}
-                                >
-                                  <div className="flex items-center gap-2 mb-3">
-                                    <span
-                                      className={`text-xs font-bold px-2 py-0.5 rounded-full ${modelName === results.best_model ? "bg-amber-500 text-stone-900" : "bg-stone-200 text-stone-700"}`}
-                                    >
-                                      {modelName}
-                                    </span>
-                                    {modelName === results.best_model && (
-                                      <span className="text-xs text-amber-600 font-semibold">
-                                        ★ Best
-                                      </span>
-                                    )}
-                                  </div>
-                                  {Object.keys(params).length === 0 ? (
-                                    <p className="text-xs text-stone-400 italic">
-                                      No hyperparameter info available.
-                                    </p>
-                                  ) : (
-                                    <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-                                      {Object.entries(params)
-                                        .filter(
-                                          ([, v]) =>
-                                            v !== null && v !== undefined,
-                                        )
-                                        .map(([k, v]) => (
-                                          <div
-                                            key={k}
-                                            className="flex justify-between text-xs border-b border-stone-100 py-0.5"
-                                          >
-                                            <span className="text-stone-500 font-medium truncate mr-2">
-                                              {k}
-                                            </span>
-                                            <span className="text-stone-800 font-semibold tabular-nums truncate text-right">
-                                              {String(v)}
-                                            </span>
-                                          </div>
-                                        ))}
-                                    </div>
-                                  )}
-                                </div>
-                              ),
-                            )}
-                          </div>
-                        </div>
-                      )}
-
                     {/* Train vs Test Metrics Grid */}
                     <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
                       <div className="flex border-b border-stone-100">
@@ -1939,6 +1877,67 @@ export default function App() {
                         </div>
                       </div>
                     )}
+                    {/* Hyperparameters per trained model */}
+                    {results.hyperparameters &&
+                      Object.keys(results.hyperparameters).length > 0 && (
+                        <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
+                          <div className="px-6 py-4 border-b border-stone-100 flex items-center gap-2">
+                            <Sliders className="w-4 h-4 text-amber-500" />
+                            <span className="font-semibold text-stone-700">
+                              Hyperparameters Used per Model
+                            </span>
+                          </div>
+                          <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {Object.entries(results.hyperparameters).map(
+                              ([modelName, params]) => (
+                                <div
+                                  key={modelName}
+                                  className={`rounded-xl border p-4 ${modelName === results.best_model ? "border-amber-300 bg-amber-50/40" : "border-stone-200 bg-stone-50/40"}`}
+                                >
+                                  <div className="flex items-center gap-2 mb-3">
+                                    <span
+                                      className={`text-xs font-bold px-2 py-0.5 rounded-full ${modelName === results.best_model ? "bg-amber-500 text-stone-900" : "bg-stone-200 text-stone-700"}`}
+                                    >
+                                      {modelName}
+                                    </span>
+                                    {modelName === results.best_model && (
+                                      <span className="text-xs text-amber-600 font-semibold">
+                                        ★ Best
+                                      </span>
+                                    )}
+                                  </div>
+                                  {Object.keys(params).length === 0 ? (
+                                    <p className="text-xs text-stone-400 italic">
+                                      No hyperparameter info available.
+                                    </p>
+                                  ) : (
+                                    <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                                      {Object.entries(params)
+                                        .filter(
+                                          ([, v]) =>
+                                            v !== null && v !== undefined,
+                                        )
+                                        .map(([k, v]) => (
+                                          <div
+                                            key={k}
+                                            className="flex justify-between text-xs border-b border-stone-100 py-0.5"
+                                          >
+                                            <span className="text-stone-500 font-medium truncate mr-2">
+                                              {k}
+                                            </span>
+                                            <span className="text-stone-800 font-semibold tabular-nums truncate text-right">
+                                              {String(v)}
+                                            </span>
+                                          </div>
+                                        ))}
+                                    </div>
+                                  )}
+                                </div>
+                              ),
+                            )}
+                          </div>
+                        </div>
+                      )}
 
                     {/* R² Comparison Bar */}
                     {trainedModels.length > 0 && (

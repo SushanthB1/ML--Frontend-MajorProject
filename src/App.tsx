@@ -1,5 +1,3 @@
-
-
 import React, { useState, useRef, useCallback, useMemo } from "react";
 import {
   UploadCloud,
@@ -58,6 +56,18 @@ interface ShapItem {
 interface ComparisonData {
   [modelName: string]: ModelMetrics;
 }
+interface ColumnStats {
+  count: number;
+  mean: number | null;
+  std: number | null;
+  min: number | null;
+  q25: number | null;
+  median: number | null;
+  q75: number | null;
+  max: number | null;
+  missing: number;
+  missing_pct: number | null;
+}
 interface TrainResponse {
   comparison: ComparisonData;
   best_model: string;
@@ -70,6 +80,7 @@ interface TrainResponse {
   trained_models: string[];
   split_info: { train_size: number; test_size: number; test_ratio: number };
   training_warnings?: { [k: string]: string };
+  hyperparameters?: { [modelName: string]: Record<string, any> };
 }
 
 // Ensure XGBoost is explicitly in the models array
@@ -655,6 +666,294 @@ const MetricCard = ({
 );
 
 // =====================================================================
+// VIRIDIS COLOR HELPER
+// =====================================================================
+function viridisColor(val: number): string {
+  // Map -1..1 → 0..1
+  const t = Math.max(0, Math.min(1, (val + 1) / 2));
+  // Four-stop viridis approximation
+  const stops: [number, number, number][] = [
+    [68, 1, 84], // 0.00 → deep purple
+    [59, 82, 139], // 0.33 → blue
+    [33, 145, 140], // 0.50 → teal
+    [94, 201, 98], // 0.75 → green
+    [253, 231, 37], // 1.00 → yellow
+  ];
+  const n = stops.length - 1;
+  const idx = Math.min(Math.floor(t * n), n - 1);
+  const f = t * n - idx;
+  const [r1, g1, b1] = stops[idx];
+  const [r2, g2, b2] = stops[idx + 1];
+  const r = Math.round(r1 + (r2 - r1) * f);
+  const g = Math.round(g1 + (g2 - g1) * f);
+  const b = Math.round(b1 + (b2 - b1) * f);
+  return `rgb(${r},${g},${b})`;
+}
+
+function textColorForBg(val: number): string {
+  // Use white text for dark cells, dark text for bright cells
+  const t = (val + 1) / 2;
+  return t > 0.65 ? "#1e293b" : "#f1f5f9";
+}
+
+// =====================================================================
+// CORRELATION HEATMAP COMPONENT
+// =====================================================================
+const CorrelationHeatmap = ({
+  matrix,
+}: {
+  matrix: Record<string, Record<string, number | null>>;
+}) => {
+  const cols = Object.keys(matrix);
+  if (cols.length < 2) return null;
+
+  const CELL = 64;
+  const LABEL_W = 130;
+  const LABEL_H = 100;
+  const LEGEND_W = 30;
+  const LEGEND_MARGIN = 16;
+
+  const gridW = cols.length * CELL;
+  const gridH = cols.length * CELL;
+  const totalW = LABEL_W + gridW + LEGEND_MARGIN + LEGEND_W + 30;
+  const totalH = LABEL_H + gridH + 20;
+
+  return (
+    <div className="overflow-x-auto">
+      <svg
+        viewBox={`0 0 ${totalW} ${totalH}`}
+        className="w-full"
+        style={{ minWidth: Math.min(totalW, 900) }}
+      >
+        {/* Column labels (top, rotated) */}
+        {cols.map((col, ci) => (
+          <text
+            key={`col-${ci}`}
+            x={LABEL_W + ci * CELL + CELL / 2}
+            y={LABEL_H - 6}
+            textAnchor="start"
+            fontSize="10"
+            fill="#475569"
+            fontFamily="monospace"
+            transform={`rotate(-40,${LABEL_W + ci * CELL + CELL / 2},${LABEL_H - 6})`}
+          >
+            {col.length > 14 ? col.slice(0, 14) + "…" : col}
+          </text>
+        ))}
+
+        {/* Row labels (left) */}
+        {cols.map((col, ri) => (
+          <text
+            key={`row-${ri}`}
+            x={LABEL_W - 8}
+            y={LABEL_H + ri * CELL + CELL / 2}
+            textAnchor="end"
+            dominantBaseline="middle"
+            fontSize="10"
+            fill="#475569"
+            fontFamily="monospace"
+          >
+            {col.length > 16 ? col.slice(0, 16) + "…" : col}
+          </text>
+        ))}
+
+        {/* Cells */}
+        {cols.map((row, ri) =>
+          cols.map((col, ci) => {
+            const raw = matrix[row]?.[col];
+            const val = raw !== null && raw !== undefined ? raw : 0;
+            const displayVal =
+              raw !== null && raw !== undefined
+                ? Math.abs(val) < 0.001 && val !== 0
+                  ? val.toExponential(1)
+                  : val.toFixed(2)
+                : "—";
+            const bg = viridisColor(val);
+            const fg = textColorForBg(val);
+            return (
+              <g key={`${ri}-${ci}`}>
+                <rect
+                  x={LABEL_W + ci * CELL}
+                  y={LABEL_H + ri * CELL}
+                  width={CELL}
+                  height={CELL}
+                  fill={bg}
+                  stroke="white"
+                  strokeWidth="1"
+                />
+                <text
+                  x={LABEL_W + ci * CELL + CELL / 2}
+                  y={LABEL_H + ri * CELL + CELL / 2}
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                  fontSize="9.5"
+                  fill={fg}
+                  fontFamily="monospace"
+                  fontWeight="600"
+                >
+                  {displayVal}
+                </text>
+              </g>
+            );
+          }),
+        )}
+
+        {/* Colour legend bar */}
+        {Array.from({ length: 100 }).map((_, i) => {
+          const t = i / 99;
+          const v = t * 2 - 1;
+          return (
+            <rect
+              key={i}
+              x={LABEL_W + gridW + LEGEND_MARGIN}
+              y={LABEL_H + (1 - t) * gridH}
+              width={LEGEND_W}
+              height={gridH / 99 + 1}
+              fill={viridisColor(v)}
+            />
+          );
+        })}
+        {/* Legend labels */}
+        {[1, 0.5, 0, -0.5, -1].map((v) => {
+          const y = LABEL_H + (1 - (v + 1) / 2) * gridH;
+          return (
+            <text
+              key={v}
+              x={LABEL_W + gridW + LEGEND_MARGIN + LEGEND_W + 5}
+              y={y}
+              dominantBaseline="middle"
+              fontSize="9"
+              fill="#64748b"
+            >
+              {v.toFixed(1)}
+            </text>
+          );
+        })}
+      </svg>
+    </div>
+  );
+};
+
+// =====================================================================
+// STATISTICS TABLE COMPONENT
+// =====================================================================
+const fmt = (v: number | null | undefined, decimals = 3): string => {
+  if (v === null || v === undefined || isNaN(v as number)) return "—";
+  return (v as number).toFixed(decimals);
+};
+
+const StatisticsTable = ({
+  statistics,
+  columns,
+}: {
+  statistics: Record<string, ColumnStats>;
+  columns: string[];
+}) => {
+  const statCols = columns.filter((c) => c in statistics);
+  if (statCols.length === 0) return null;
+
+  const STAT_HEADERS = [
+    { key: "count", label: "Count" },
+    { key: "missing", label: "Missing" },
+    { key: "mean", label: "Mean" },
+    { key: "std", label: "Std Dev" },
+    { key: "min", label: "Min" },
+    { key: "q25", label: "Q25" },
+    { key: "median", label: "Median" },
+    { key: "q75", label: "Q75" },
+    { key: "max", label: "Max" },
+  ];
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm min-w-[700px]">
+        <thead>
+          <tr className="bg-stone-50">
+            <th className="px-4 py-3 text-left text-xs font-bold text-stone-500 uppercase tracking-wider sticky left-0 bg-stone-50 z-10 whitespace-nowrap">
+              Feature
+            </th>
+            <th className="px-3 py-3 text-left text-xs font-bold text-amber-600 uppercase tracking-wider whitespace-nowrap">
+              Unit
+            </th>
+            {STAT_HEADERS.map((h) => (
+              <th
+                key={h.key}
+                className="px-3 py-3 text-right text-xs font-bold text-stone-500 uppercase tracking-wider whitespace-nowrap"
+              >
+                {h.label}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {statCols.map((col, ri) => {
+            const s = statistics[col];
+            const unit = getUnit(col);
+            return (
+              <tr
+                key={col}
+                className={`border-t border-stone-100 ${ri % 2 === 0 ? "" : "bg-stone-50/40"} hover:bg-amber-50/30 transition-colors`}
+              >
+                <td className="px-4 py-2.5 font-semibold text-stone-700 sticky left-0 bg-inherit whitespace-nowrap">
+                  {col}
+                </td>
+                <td className="px-3 py-2.5 whitespace-nowrap">
+                  {unit ? (
+                    <span className="text-amber-600 bg-amber-50 border border-amber-200 text-[10px] font-bold px-1.5 py-0.5 rounded">
+                      {unit}
+                    </span>
+                  ) : (
+                    <span className="text-stone-300 text-xs">—</span>
+                  )}
+                </td>
+                <td className="px-3 py-2.5 text-right tabular-nums text-stone-600">
+                  {s.count}
+                </td>
+                <td className="px-3 py-2.5 text-right tabular-nums">
+                  {s.missing > 0 ? (
+                    <span className="text-rose-500 font-semibold">
+                      {s.missing}{" "}
+                      <span className="text-rose-400 text-[10px]">
+                        ({fmt(s.missing_pct, 1)}%)
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="text-emerald-500 text-xs font-medium">
+                      None
+                    </span>
+                  )}
+                </td>
+                <td className="px-3 py-2.5 text-right tabular-nums text-stone-600 font-medium">
+                  {fmt(s.mean)}
+                </td>
+                <td className="px-3 py-2.5 text-right tabular-nums text-stone-500">
+                  {fmt(s.std)}
+                </td>
+                <td className="px-3 py-2.5 text-right tabular-nums text-stone-600">
+                  {fmt(s.min)}
+                </td>
+                <td className="px-3 py-2.5 text-right tabular-nums text-stone-400">
+                  {fmt(s.q25)}
+                </td>
+                <td className="px-3 py-2.5 text-right tabular-nums text-stone-600 font-semibold">
+                  {fmt(s.median)}
+                </td>
+                <td className="px-3 py-2.5 text-right tabular-nums text-stone-400">
+                  {fmt(s.q75)}
+                </td>
+                <td className="px-3 py-2.5 text-right tabular-nums text-stone-600">
+                  {fmt(s.max)}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+};
+
+// =====================================================================
 // MAIN APP
 // =====================================================================
 export default function App() {
@@ -666,6 +965,10 @@ export default function App() {
   const [dataPreview, setDataPreview] = useState<any[]>([]);
   const [totalRows, setTotalRows] = useState<number>(0);
   const [isDragging, setIsDragging] = useState(false);
+  const [dataStats, setDataStats] = useState<Record<string, ColumnStats>>({});
+  const [corrMatrix, setCorrMatrix] = useState<
+    Record<string, Record<string, number | null>>
+  >({});
 
   // Training config
   const [features, setFeatures] = useState<string[]>([]);
@@ -710,6 +1013,8 @@ export default function App() {
       setColumns(data.columns);
       setDataPreview(data.preview);
       setTotalRows(data.total_rows);
+      setDataStats(data.statistics ?? {});
+      setCorrMatrix(data.correlation ?? {});
       setFeatures([]);
       setTarget("");
       setResults(null);
@@ -720,6 +1025,8 @@ export default function App() {
       setColumns([]);
       setDataPreview([]);
       setTotalRows(0);
+      setDataStats({});
+      setCorrMatrix({});
     }
   };
 
@@ -1106,6 +1413,64 @@ export default function App() {
                 </div>
               )}
 
+              {/* ── Statistical Analysis ── */}
+              {Object.keys(dataStats).length > 0 && (
+                <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-sm">
+                  <div className="px-6 py-4 border-b border-stone-100 flex items-center gap-2">
+                    <BarChart2 className="w-4 h-4 text-amber-500" />
+                    <span className="font-semibold text-stone-700">
+                      Statistical Analysis
+                    </span>
+                    <span className="ml-auto text-xs text-stone-400">
+                      {Object.keys(dataStats).length} numeric column
+                      {Object.keys(dataStats).length !== 1 ? "s" : ""}
+                    </span>
+                  </div>
+                  <StatisticsTable statistics={dataStats} columns={columns} />
+                </div>
+              )}
+
+              {/* ── Correlation Matrix ── */}
+              {Object.keys(corrMatrix).length > 1 && (
+                <div className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-sm">
+                  <div className="px-6 py-4 border-b border-stone-100 flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-amber-500" />
+                    <span className="font-semibold text-stone-700">
+                      Correlation Matrix
+                    </span>
+                    <span className="ml-auto text-xs text-stone-400">
+                      Pearson correlation between attributes
+                    </span>
+                  </div>
+                  <div className="p-4">
+                    <CorrelationHeatmap matrix={corrMatrix} />
+                    <div className="flex flex-wrap items-center gap-5 mt-4 text-xs text-stone-400 justify-center">
+                      <span className="flex items-center gap-1.5">
+                        <span
+                          className="inline-block w-3 h-3 rounded"
+                          style={{ background: viridisColor(1) }}
+                        />
+                        Strong positive (1.0)
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <span
+                          className="inline-block w-3 h-3 rounded"
+                          style={{ background: viridisColor(0) }}
+                        />
+                        No correlation (0)
+                      </span>
+                      <span className="flex items-center gap-1.5">
+                        <span
+                          className="inline-block w-3 h-3 rounded"
+                          style={{ background: viridisColor(-1) }}
+                        />
+                        Strong negative (−1.0)
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div>
                 <div className="flex items-center gap-2 mb-4">
                   <BookOpen className="w-4 h-4 text-stone-400" />
@@ -1399,6 +1764,68 @@ export default function App() {
                         </div>
                       </div>
                     )}
+
+                    {/* Hyperparameters per trained model */}
+                    {results.hyperparameters &&
+                      Object.keys(results.hyperparameters).length > 0 && (
+                        <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">
+                          <div className="px-6 py-4 border-b border-stone-100 flex items-center gap-2">
+                            <Sliders className="w-4 h-4 text-amber-500" />
+                            <span className="font-semibold text-stone-700">
+                              Hyperparameters Used per Model
+                            </span>
+                          </div>
+                          <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {Object.entries(results.hyperparameters).map(
+                              ([modelName, params]) => (
+                                <div
+                                  key={modelName}
+                                  className={`rounded-xl border p-4 ${modelName === results.best_model ? "border-amber-300 bg-amber-50/40" : "border-stone-200 bg-stone-50/40"}`}
+                                >
+                                  <div className="flex items-center gap-2 mb-3">
+                                    <span
+                                      className={`text-xs font-bold px-2 py-0.5 rounded-full ${modelName === results.best_model ? "bg-amber-500 text-stone-900" : "bg-stone-200 text-stone-700"}`}
+                                    >
+                                      {modelName}
+                                    </span>
+                                    {modelName === results.best_model && (
+                                      <span className="text-xs text-amber-600 font-semibold">
+                                        ★ Best
+                                      </span>
+                                    )}
+                                  </div>
+                                  {Object.keys(params).length === 0 ? (
+                                    <p className="text-xs text-stone-400 italic">
+                                      No hyperparameter info available.
+                                    </p>
+                                  ) : (
+                                    <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                                      {Object.entries(params)
+                                        .filter(
+                                          ([, v]) =>
+                                            v !== null && v !== undefined,
+                                        )
+                                        .map(([k, v]) => (
+                                          <div
+                                            key={k}
+                                            className="flex justify-between text-xs border-b border-stone-100 py-0.5"
+                                          >
+                                            <span className="text-stone-500 font-medium truncate mr-2">
+                                              {k}
+                                            </span>
+                                            <span className="text-stone-800 font-semibold tabular-nums truncate text-right">
+                                              {String(v)}
+                                            </span>
+                                          </div>
+                                        ))}
+                                    </div>
+                                  )}
+                                </div>
+                              ),
+                            )}
+                          </div>
+                        </div>
+                      )}
 
                     {/* Train vs Test Metrics Grid */}
                     <div className="bg-white rounded-2xl border border-stone-200 shadow-sm overflow-hidden">

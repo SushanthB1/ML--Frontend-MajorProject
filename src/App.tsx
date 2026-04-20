@@ -93,6 +93,23 @@ const ALL_MODELS = [
 ];
 
 // =====================================================================
+// HYPERPARAMETER WHITELIST (Table 5.1)
+// Only these params shown in frontend per model
+// =====================================================================
+const HYPERPARAMS_WHITELIST: Record<string, string[]> = {
+  "Random Forest": ["n_estimators", "max_features", "max_depth"],
+  XGBoost: ["n_estimators", "learning_rate", "max_depth"],
+  SVR: ["C", "epsilon", "gamma"],
+  ORF: ["max_depth"],
+  "PySR (Symbolic)": [
+    "populations",
+    "niterations",
+    "binary_operators",
+    "unary_operators",
+  ],
+};
+
+// =====================================================================
 // ROCK MECHANICS UNITS MAP
 // =====================================================================
 const ROCK_MECHANICS_UNITS: [RegExp, string][] = [
@@ -1906,32 +1923,49 @@ export default function App() {
                                       </span>
                                     )}
                                   </div>
-                                  {Object.keys(params).length === 0 ? (
-                                    <p className="text-xs text-stone-400 italic">
-                                      No hyperparameter info available.
-                                    </p>
-                                  ) : (
-                                    <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
-                                      {Object.entries(params)
-                                        .filter(
-                                          ([, v]) =>
-                                            v !== null && v !== undefined,
-                                        )
-                                        .map(([k, v]) => (
-                                          <div
-                                            key={k}
-                                            className="flex justify-between text-xs border-b border-stone-100 py-0.5"
-                                          >
-                                            <span className="text-stone-500 font-medium truncate mr-2">
-                                              {k}
-                                            </span>
-                                            <span className="text-stone-800 font-semibold tabular-nums truncate text-right">
-                                              {String(v)}
-                                            </span>
-                                          </div>
-                                        ))}
-                                    </div>
-                                  )}
+                                  {(() => {
+                                    const allowed =
+                                      HYPERPARAMS_WHITELIST[modelName];
+                                    const filtered = Object.entries(
+                                      params,
+                                    ).filter(
+                                      ([k, v]) =>
+                                        v !== null &&
+                                        v !== undefined &&
+                                        (allowed ? allowed.includes(k) : false),
+                                    );
+                                    return filtered.length === 0 ? (
+                                      <p className="text-xs text-stone-400 italic">
+                                        No hyperparameter info available.
+                                      </p>
+                                    ) : (
+                                      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
+                                        {Object.entries(params)
+                                          .filter(([k, v]) => {
+                                            if (v === null || v === undefined)
+                                              return false;
+                                            const allowed =
+                                              HYPERPARAMS_WHITELIST[modelName];
+                                            return allowed
+                                              ? allowed.includes(k)
+                                              : false;
+                                          })
+                                          .map(([k, v]) => (
+                                            <div
+                                              key={k}
+                                              className="flex justify-between text-xs border-b border-stone-100 py-0.5"
+                                            >
+                                              <span className="text-stone-500 font-medium truncate mr-2">
+                                                {k}
+                                              </span>
+                                              <span className="text-stone-800 font-semibold tabular-nums truncate text-right">
+                                                {String(v)}
+                                              </span>
+                                            </div>
+                                          ))}
+                                      </div>
+                                    );
+                                  })()}
                                 </div>
                               ),
                             )}
